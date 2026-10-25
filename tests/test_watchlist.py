@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 import unittest
@@ -46,6 +47,24 @@ class WatchlistTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_item(self.path, "商品", "", "", "not-a-price")
         self.assertEqual(self.path.read_bytes(), before)
+
+    def test_delete_last_item_disables_monitoring_and_cancels_pending_alerts(self):
+        app = App(load_config(self.path), self.path)
+        self.addCleanup(app.storage.close)
+        ids = [item["id"] for item in list_items(self.path)]
+        app.storage.queue_alert("new", 123, "2TB 固态硬盘 ¥599", "body", True, 3600,
+                                rule_id=ids[0])
+        app.storage.queue_alert("legacy", 123, "纯牛奶 ¥39", "body", False, 3600)
+        for item_id in ids:
+            remove_item(self.path, item_id)
+        self.assertEqual(list_items(self.path), [])
+        app.reload_rules_if_changed()
+        self.assertEqual(app.config.rules, ())
+        asyncio.run(app.deliver())
+        self.assertEqual(app.storage.pending_apps(), [])
+        rows = app.storage.db.execute("SELECT app_sent_at, voice_requested, last_error FROM alerts").fetchall()
+        self.assertTrue(all(row[0] is not None and row[1] == 0 and row[2] == "关注商品已删除"
+                            for row in rows))
 
 
 if __name__ == "__main__":

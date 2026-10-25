@@ -16,6 +16,7 @@ class Storage:
             CREATE TABLE IF NOT EXISTS alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dedupe_key TEXT NOT NULL, group_id INTEGER NOT NULL,
+                rule_id TEXT,
                 title TEXT NOT NULL, content TEXT NOT NULL,
                 voice_requested INTEGER NOT NULL, created_at INTEGER NOT NULL,
                 app_sent_at INTEGER, voice_attempted_at INTEGER,
@@ -44,6 +45,8 @@ class Storage:
             self.db.execute("ALTER TABLE alerts ADD COLUMN app_retry_at INTEGER NOT NULL DEFAULT 0")
         if "app_receipt_code" not in columns:
             self.db.execute("ALTER TABLE alerts ADD COLUMN app_receipt_code TEXT")
+        if "rule_id" not in columns:
+            self.db.execute("ALTER TABLE alerts ADD COLUMN rule_id TEXT")
         self.db.commit()
 
     def close(self) -> None:
@@ -69,21 +72,28 @@ class Storage:
         return [row[0] for row in reversed(rows) if row[0]]
 
     def queue_alert(self, key: str, group_id: int, title: str, content: str,
-                    voice: bool, dedupe_seconds: int) -> bool:
+                    voice: bool, dedupe_seconds: int, rule_id: str | None = None) -> bool:
         now = int(time.time())
         exists = self.db.execute(
             "SELECT 1 FROM alerts WHERE dedupe_key=? AND created_at>? LIMIT 1",
             (key, now - dedupe_seconds)).fetchone()
         if exists:
             return False
-        self.db.execute("INSERT INTO alerts (dedupe_key, group_id, title, content, voice_requested, created_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)", (key, group_id, title, content, int(voice), now))
+        self.db.execute("INSERT INTO alerts (dedupe_key, group_id, rule_id, title, content, voice_requested, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (key, group_id, rule_id, title, content, int(voice), now))
         self.db.commit()
         return True
 
     def pending_apps(self) -> list[tuple]:
-        return self.db.execute("SELECT id, title, content FROM alerts WHERE app_sent_at IS NULL "
+        return self.db.execute("SELECT id, title, content, rule_id FROM alerts WHERE app_sent_at IS NULL "
                                "AND app_retry_at<=? ORDER BY id LIMIT 50", (int(time.time()),)).fetchall()
+
+    def skip_app(self, alert_id: int) -> None:
+        self.db.execute("UPDATE alerts SET app_sent_at=?, voice_requested=0, "
+                        "last_error='关注商品已删除' WHERE id=? AND app_sent_at IS NULL",
+                        (int(time.time()), alert_id))
+        self.db.commit()
 
     def app_result(self, alert_id: int, error: str | None = None,
                    receipt_code: str | None = None) -> None:
@@ -97,7 +107,7 @@ class Storage:
         self.db.commit()
 
     def pending_voices(self) -> list[tuple]:
-        return self.db.execute("SELECT id, title, content FROM alerts WHERE voice_requested=1 "
+        return self.db.execute("SELECT id, title, content, rule_id FROM alerts WHERE voice_requested=1 "
                                "AND app_sent_at IS NOT NULL AND voice_attempted_at IS NULL ORDER BY id LIMIT 20").fetchall()
 
     def recent_voice_count(self, since: int) -> int:

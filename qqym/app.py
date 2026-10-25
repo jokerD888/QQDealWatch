@@ -77,6 +77,10 @@ class App:
         message = parse_onebot(event, self.config.group_ids)
         if message is None:
             return
+        if not self.config.rules:
+            if retry:
+                self.storage.clear_failed(message.group_id, message.message_id)
+            return
         if not retry and not self.storage.first_seen(message.group_id, message.message_id):
             return
         current_text = message.text
@@ -124,7 +128,8 @@ class App:
                            f"消息 ID：{message.message_id}")
                 queued = self.storage.queue_alert(alert_key(message, match), message.group_id,
                                                   title, content, match.voice,
-                                                  active_config.dedupe_hours * 3600)
+                                                  active_config.dedupe_hours * 3600,
+                                                  rule_id=match.rule.id)
                 if queued:
                     LOG.info("命中：%s，群 %s，消息 %s", title, message.group_id, message.message_id)
             if retry:
@@ -141,7 +146,17 @@ class App:
         async with self.delivery_lock:
             if self.delivery_blocked:
                 return
-            for alert_id, title, content in self.storage.pending_apps():
+            active_rules = {rule.id: rule.name for rule in self.config.rules}
+            def still_watched(rule_id: str | None, title: str) -> bool:
+                if rule_id is not None:
+                    return rule_id in active_rules
+                return any(title.startswith(name + " ") for name in active_rules.values())
+
+            for alert_id, title, content, rule_id in self.storage.pending_apps():
+                if not still_watched(rule_id, title):
+                    self.storage.skip_app(alert_id)
+                    LOG.info("已取消删除商品的待发送提醒 %s", alert_id)
+                    continue
                 try:
                     if self.config.dry_run:
                         LOG.info("[演练推送] %s\n%s", title, content)
@@ -159,7 +174,10 @@ class App:
                         LOG.error("pushplus 账户状态阻止发送，本进程暂停后续推送；修复后请重启监听器")
                         self.delivery_blocked = True
                         return
-            for alert_id, title, content in self.storage.pending_voices():
+            for alert_id, title, content, rule_id in self.storage.pending_voices():
+                if not still_watched(rule_id, title):
+                    self.storage.skip_voice(alert_id)
+                    continue
                 now = datetime.now(CHINA)
                 start, end = self.config.voice_allowed_hours
                 last = self.storage.latest_voice()

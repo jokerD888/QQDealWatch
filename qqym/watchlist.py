@@ -99,8 +99,6 @@ def add_item(path: Path, name: str, aliases: str = "", requirements: str = "",
 
 def remove_item(path: Path, item_id: str) -> None:
     raw, mtime = _read(path)
-    if len(raw["rules"]) <= 1:
-        raise ValueError("至少保留一条关注规则")
     remaining = [item for item in raw["rules"] if item["id"] != item_id]
     if len(remaining) == len(raw["rules"]):
         raise ValueError("找不到该商品")
@@ -121,6 +119,8 @@ def set_price(path: Path, item_id: str, max_price: str | None) -> None:
 def print_items(path: Path) -> list[dict]:
     items = list_items(path)
     print("\n当前关注清单：")
+    if not items:
+        print("（暂无关注商品；监听器不会发送商品提醒）")
     for index, item in enumerate(items, 1):
         price = item.get("max_price")
         limit = f"低于 ¥{price}" if price is not None else "不限价"
@@ -132,6 +132,8 @@ def print_items(path: Path) -> list[dict]:
 
 def _pick_item(path: Path) -> dict:
     items = print_items(path)
+    if not items:
+        raise ValueError("清单为空，请先添加商品")
     value = input("输入商品序号：").strip()
     if not value.isdigit() or not 1 <= int(value) <= len(items):
         raise ValueError("商品序号无效")
@@ -162,10 +164,10 @@ def interactive(path: Path) -> None:
                 print("价格上限已更新。监听器约 20 秒内自动载入。\n")
             elif choice == "4":
                 item = _pick_item(path)
-                confirm = input(f"输入商品名称“{item['name']}”以确认删除：").strip()
-                if confirm == item["name"]:
+                confirm = input(f"确认删除「{item['name']}」？输入 y 确认：").strip().lower()
+                if confirm == "y":
                     remove_item(path, item["id"])
-                    print("已删除。监听器约 20 秒内自动载入。\n")
+                    print("已删除；尚未发送的该商品提醒也会取消。监听器约 20 秒内自动载入。\n")
                 else:
                     print("未删除。\n")
             else:

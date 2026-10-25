@@ -56,8 +56,8 @@ def load_config(path: str | Path) -> Config:
                           str(item.get("requirements", "")),
                           _price(item.get("max_price")), _price(item.get("voice_below")),
                           bool(item.get("voice_on_match", False))))
-    if not rules or len({r.id for r in rules}) != len(rules):
-        raise ValueError("rules 不能为空，且 id 不能重复")
+    if len({r.id for r in rules}) != len(rules):
+        raise ValueError("rules 中的 id 不能重复")
     voice = raw.get("voice", {})
     hours = tuple(voice.get("allowed_hours", [8, 23]))
     if len(hours) != 2 or not (0 <= hours[0] < hours[1] <= 24):
