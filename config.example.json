@@ -1,0 +1,35 @@
+{
+  "onebot_ws_url": "ws://127.0.0.1:3001/",
+  "group_ids": [123456789],
+  "database": "data/alerts.db",
+  "dry_run": true,
+  "notify_channel": "app",
+  "unknown_price_notify": false,
+  "dedupe_hours": 12,
+  "voice": {
+    "enabled": false,
+    "daily_limit": 3,
+    "cooldown_minutes": 60,
+    "allowed_hours": [8, 23]
+  },
+  "rules": [
+    {
+      "id": "ssd-2tb",
+      "name": "2TB 固态硬盘",
+      "aliases": ["2tb ssd", "2t 固态", "2tb 固态", "2t ssd"],
+      "requirements": "全新，容量至少 2TB；排除二手、以旧换新",
+      "max_price": 700,
+      "voice_below": 600,
+      "voice_on_match": false
+    },
+    {
+      "id": "milk",
+      "name": "纯牛奶 250ml × 24 盒",
+      "aliases": ["纯牛奶", "牛奶 24盒", "牛奶 24 盒"],
+      "requirements": "250ml × 24 盒；排除临期",
+      "max_price": 50,
+      "voice_below": null,
+      "voice_on_match": false
+    }
+  ]
+}
