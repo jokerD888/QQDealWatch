@@ -7,7 +7,7 @@ if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
 }
 $userName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $startScript + '"')
+    -Argument ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $startScript + '"')
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $userName
 $principal = New-ScheduledTaskPrincipal -UserId $userName -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
