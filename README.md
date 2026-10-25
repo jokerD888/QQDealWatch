@@ -39,9 +39,17 @@
 
 电脑需保持登录且不休眠。QQ 接入程序、AI 服务和监听器都要持续运行。SnowLuma、NapCatQQ 及 AI 服务均需自行安装，本仓库不包含它们的程序或凭据。
 
+## 自己管理关注商品
+
+在项目目录双击 `manage-items.cmd`，按菜单选择“添加商品”。依次填写商品名称、常见简称、规格或排除条件，以及可选价格上限。价格留空表示不限价；例如填写 `700`，只有明确的到手价**低于 700 元**才提醒。菜单也支持查看、调整价格和删除商品。
+
+保存后，运行中的监听器约 20 秒内自动载入新规则，无需重启；新规则只处理之后收到的群消息，不会自动扫描历史消息。`config.json` 是本机私有文件，管理工具不会改动其中的群号或推送设置。
+
+也可以在命令行使用 `python -m qqym.watchlist list` 和 `python -m qqym.watchlist add`。
+
 ## 登录后自动启动
 
-`start.ps1` 可启动放在 `tools/SnowLuma` 的 SnowLuma、检查本机 8080 端口并启动 GLM 代理，然后运行监听器。GLM 代理默认查找项目目录的同级 `zcode-api/zcode-proxy.exe`；其他位置可设置环境变量 `QQYM_PROXY_EXE` 为其绝对路径。如果使用 NapCatQQ 或其他 AI 服务，可按自己的环境调整启动脚本。
+`start.ps1` 可启动放在 `tools/SnowLuma` 的 SnowLuma、检查本机 8080 端口并启动 GLM 代理，然后运行监听器。脚本每 30 秒检查依赖服务，退出后会尝试重新启动。GLM 代理默认查找项目目录的同级 `zcode-api/zcode-proxy.exe`；其他位置可设置环境变量 `QQYM_PROXY_EXE` 为其绝对路径。如果使用 NapCatQQ 或其他 AI 服务，可按自己的环境调整启动脚本。
 
 完成实际通知测试后，可运行：
 

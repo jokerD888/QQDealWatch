@@ -47,13 +47,31 @@ async def probe_onebot(config: Config) -> str:
 
 
 class App:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, config_path: Path | None = None):
         self.config = config
+        self.config_path = config_path.resolve() if config_path else None
+        self.config_mtime = self.config_path.stat().st_mtime_ns if self.config_path else None
         self.storage = Storage(config.database)
         self.ai_slots = asyncio.Semaphore(3)
         self.delivery_lock = asyncio.Lock()
         self.tasks: set[asyncio.Task] = set()
         self.delivery_blocked = False
+
+    def reload_rules_if_changed(self) -> None:
+        if self.config_path is None:
+            return
+        try:
+            mtime = self.config_path.stat().st_mtime_ns
+            if mtime == self.config_mtime:
+                return
+            fresh = load_config(self.config_path)
+        except Exception as exc:
+            LOG.warning("关注清单重载失败，继续使用现有规则：%s", exc)
+            return
+        self.config_mtime = mtime
+        if fresh.rules != self.config.rules:
+            self.config = replace(self.config, rules=fresh.rules)
+            LOG.info("关注清单已更新：%s 条规则", len(fresh.rules))
 
     async def process(self, event: dict, *, retry: bool = False, attempts: int = 0) -> None:
         message = parse_onebot(event, self.config.group_ids)
@@ -88,14 +106,15 @@ class App:
         context = self.storage.recent_context(message.group_id, message.message_id,
                                               message.user_id)
         analysis_message = replace(message, text="\n".join(context + [current_text]))
-        rules = candidate_rules(analysis_message, self.config.rules,
+        active_config = self.config
+        rules = candidate_rules(analysis_message, active_config.rules,
                                 include_images=bool(os.getenv("AI_VISION_MODEL")))
         if not rules:
             return
         try:
             async with self.ai_slots:
                 result = await asyncio.to_thread(analyze, analysis_message, rules)
-            matches = evaluate_result(result, rules, self.config)
+            matches = evaluate_result(result, rules, active_config)
             for match in matches:
                 price = f"¥{match.price}" if match.price is not None else "价格待确认"
                 title = f"{match.rule.name} {price}"
@@ -105,7 +124,7 @@ class App:
                            f"消息 ID：{message.message_id}")
                 queued = self.storage.queue_alert(alert_key(message, match), message.group_id,
                                                   title, content, match.voice,
-                                                  self.config.dedupe_hours * 3600)
+                                                  active_config.dedupe_hours * 3600)
                 if queued:
                     LOG.info("命中：%s，群 %s，消息 %s", title, message.group_id, message.message_id)
             if retry:
@@ -161,6 +180,7 @@ class App:
     async def maintenance(self) -> None:
         while True:
             await asyncio.sleep(20)
+            self.reload_rules_if_changed()
             await self.deliver()
             for group_id, message_id, raw, attempts in self.storage.retry_events():
                 try:
@@ -239,7 +259,7 @@ def main() -> None:
         return
     required_env(config)
     try:
-        asyncio.run(App(config).run())
+        asyncio.run(App(config, Path(args.config)).run())
     except KeyboardInterrupt:
         LOG.info("已停止")
 
